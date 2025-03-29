@@ -25,9 +25,22 @@ async def show_sources(message: types.Message):
 
 @dp.message(lambda msg: msg.text == "Amazon")
 async def trends_amazon(message: types.Message):
-    await message.answer("Ищу тренды на Amazon...")
+    await message.answer("🔥 Ищу тренды на Amazon...")
     trends = get_amazon_trends()
-    await message.answer(trends)
+
+    if not trends:
+        await message.answer("❌ Не удалось получить тренды с Amazon.")
+        return
+
+    for item in trends:
+        caption = f"<b>{item['title']}</b>\n\n<a href='{item['product_link']}'>🔗 Посмотреть на Amazon</a>"
+        await bot.send_photo(
+            chat_id=message.chat.id,
+            photo=item['image_url'],
+            caption=caption,
+            parse_mode='HTML'
+        )
+
 
 @dp.message(lambda msg: msg.text == "Shein")
 async def trends_shein(message: types.Message):
