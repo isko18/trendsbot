@@ -42,24 +42,61 @@ async def trends_amazon(message: types.Message):
         )
 
 
-@dp.message(lambda msg: msg.text == "Shein")
+@dp.message(lambda msg: msg.text.lower() == "shein")
 async def trends_shein(message: types.Message):
-    await message.answer("Ищу тренды на Shein...")
+    await message.answer("👗 Ищу тренды на Shein...")
     trends = get_shein_trends()
-    await message.answer(trends)
+
+    if not trends:
+        await message.answer("❌ Не удалось получить тренды с Shein.")
+        return
+
+    for item in trends:
+        caption = f"<b>{item['title']}</b>\n\n<a href='{item['product_link']}'>🔗 Посмотреть на Shein</a>"
+        await bot.send_photo(
+            chat_id=message.chat.id,
+            photo=item['image_url'],
+            caption=caption,
+            parse_mode='HTML'
+        )
+
 
 @dp.message(lambda msg: msg.text == "1688")
 async def trends_1688(message: types.Message):
-    await message.answer("Ищу тренды на 1688...")
+    await message.answer("📦 Ищу тренды на 1688...")
     trends = get_1688_trends()
-    await message.answer(trends)
+
+    if not trends:
+        await message.answer("❌ Не удалось получить тренды с 1688.")
+        return
+
+    for item in trends:
+        caption = f"<b>{item['title']}</b>\n\n<a href='{item['product_link']}'>🔗 Посмотреть на 1688</a>"
+        await bot.send_photo(
+            chat_id=message.chat.id,
+            photo=item['image_url'],
+            caption=caption,
+            parse_mode='HTML'
+        )
+
 
 @dp.message(lambda msg: msg.text == "Pinterest")
 async def trends_pinterest(message: types.Message):
-    await message.answer("Ищу тренды на Pinterest...")
+    await message.answer("📌 Ищу тренды на Pinterest...")
     trends = get_pinterest_trends()
-    await message.answer(trends)
 
+    if not trends:
+        await message.answer("❌ Не удалось получить тренды с Pinterest.")
+        return
+
+    for item in trends:
+        caption = f"<b>{item['title']}</b>\n\n<a href='{item['product_link']}'>🔗 Посмотреть на Pinterest</a>"
+        await bot.send_photo(
+            chat_id=message.chat.id,
+            photo=item['image_url'],
+            caption=caption,
+            parse_mode='HTML'
+        )
 async def main():
     await dp.start_polling(bot)
 
