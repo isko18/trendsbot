@@ -44,7 +44,7 @@ async def trends_amazon(message: types.Message):
 
 @dp.message(lambda msg: msg.text.lower() == "shein")
 async def trends_shein(message: types.Message):
-    await message.answer("👗 Ищу тренды на Shein...")
+    await message.answer("🔥 Ищу тренды на Shein...")
     trends = get_shein_trends()
 
     if not trends:
