@@ -1,6 +1,7 @@
 import requests
 from bs4 import BeautifulSoup
 import logging
+import random
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
@@ -16,7 +17,15 @@ def get_amazon_trends():
 
     soup = BeautifulSoup(response.text, "html.parser")
 
-    items = soup.select(".zg-carousel-general-faceout")[:5]
+    all_items = soup.select(".zg-carousel-general-faceout")
+
+    if not all_items:
+        logging.error("❌ Товары не найдены на странице Amazon.")
+        return []
+
+    # Получаем случайные 5 товаров
+    items = random.sample(all_items, k=min(5, len(all_items)))
+
     trends = []
 
     for item in items:
