@@ -172,6 +172,7 @@ async def status(message: Message):
     else:
         await message.answer("😔 Подписка не найдена. Не упусти шанс — оформи доступ и будь в курсе самых прибыльных трендов! 🔥")
 
+
 # ========== ТРЕНДЫ ==========
 @dp.message(lambda msg: msg.text == "Amazon")
 @premium_required
@@ -228,3 +229,6 @@ async def main():
 
 if __name__ == "__main__":
     asyncio.run(main())
+
+
+# уф
