@@ -1,40 +1,48 @@
-import requests
+import random
+from playwright.async_api import async_playwright
 from bs4 import BeautifulSoup
-import logging
 
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+async def get_pinterest_trends():
+    url = "https://www.pinterest.com/search/pins/?q=самые%20продаваемые%20товары%202025"
 
-def get_pinterest_trends():
-    url = "https://www.pinterest.com/search/pins/?q=%D1%81%D0%B0%D0%BC%D1%8B%D0%B5%20%D0%BF%D1%80%D0%BE%D0%B4%D0%B0%D0%B2%D0%B0%D0%B5%D0%BC%D1%8B%D0%B5%20%D1%82%D0%BE%D0%B2%D0%B0%D1%80%D1%8B%202025&rs=typed"
-    headers = {"User-Agent": "Mozilla/5.0"}
-    logging.info(f"Отправка запроса на {url}")
-    
-    response = requests.get(url, headers=headers)
+    async with async_playwright() as p:
+        browser = await p.chromium.launch(headless=True)
+        page = await browser.new_page()
 
-    if response.status_code != 200:
-        logging.error(f"Ошибка получения данных с Pinterest: статус-код {response.status_code}")
-        return []
+        # Отключаем ненужные ресурсы
+        await page.route("**/*", lambda route, request: route.abort()
+                         if request.resource_type in ["image", "stylesheet", "font"]
+                         else route.continue_())
 
-    soup = BeautifulSoup(response.text, "html.parser")
+        await page.goto(url, wait_until="domcontentloaded", timeout=30000)
+        await page.wait_for_timeout(5000)  # дать странице подгрузиться
+        html = await page.content()
+        await browser.close()
 
-    items = soup.select("div.GrowthUnauthPinImage")[:5]
-    trends = []
+    soup = BeautifulSoup(html, "html.parser")
+    pin_items = soup.select("div[data-test-id='pin']")  # ищем пины
 
-    for item in items:
-        img_elem = item.select_one("img")
-        link_elem = item.find_parent("a")
+    pins = random.sample(pin_items, k=min(5, len(pin_items)))
+    results = []
 
-        title = img_elem["alt"] if img_elem and "alt" in img_elem.attrs else "Без названия"
-        image_url = img_elem["src"] if img_elem else None
-        product_link = f"https://www.pinterest.com{link_elem['href']}" if link_elem else None
+    for pin in pins:
+        try:
+            link_tag = pin.find("a", href=True)
+            if not link_tag:
+                continue
+            pin_link = "https://www.pinterest.com" + link_tag["href"]
+            title = link_tag.get("aria-label") or "Без названия"
+            image_tag = pin.find("img")
+            image_url = image_tag["src"] if image_tag else "Изображение не найдено"
+            description = image_tag.get("alt", "Описание не указано") if image_tag else "Описание не указано"
 
-        if image_url:
-            trends.append({
-                'title': title,
-                'image_url': image_url,
-                'product_link': product_link
+            results.append({
+                "title": title,
+                "image_url": image_url,
+                "pin_link": pin_link,
+                "description": description
             })
+        except Exception as e:
+            print(f"❌ Ошибка при обработке пина: {e}")
 
-        logging.info(f"Найден товар: {title}")
-
-    return trends
+    return results

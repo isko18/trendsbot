@@ -11,9 +11,13 @@ from aiogram.types import (
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 from config import BOT_TOKEN, PAY_TOKEN
+from deep_translator import GoogleTranslator
 from trends.amazon import get_amazon_trends
 from trends.shein import get_shein_trends
-from trends.trend1688 import get_1688_trends
+from aiogram.types import CallbackQuery
+from aiogram.utils.keyboard import InlineKeyboardBuilder
+from trends.trend1688 import get_1688_categories, get_1688_trends_by_category
+
 from trends.pinterest import get_pinterest_trends
 
 bot = Bot(token=BOT_TOKEN)
@@ -214,32 +218,75 @@ async def trends_shein(message: Message):
     for item in trends:
         caption = f"✨ <b>{item['title']}</b>\n💰 Цена: {item['price']}\n<a href='{item['product_link']}'>🛍️ Смотреть товар</a>"
         await bot.send_photo(message.chat.id, item['image_url'], caption=caption, parse_mode='HTML')
+@dp.callback_query(lambda c: c.data.startswith("cat1688:"))
+async def show_1688_by_category(callback: CallbackQuery):
+    await callback.answer()  # важно сразу ответить, чтобы Telegram не ругался
 
+    cat_name = callback.data.split(":", 1)[1]  # оригинальное китайское название
+
+    # Переводим для красивого отображения
+    try:
+        translated = GoogleTranslator(source='auto', target='ru').translate(cat_name)
+    except:
+        translated = cat_name
+
+    await callback.message.answer(f"🔍 Загружаю тренды из категории «{translated}»...")
+
+    trends = await get_1688_trends_by_category(cat_name)
+
+    if not trends:
+        await callback.message.answer("❌ Не удалось получить тренды по этой категории.")
+        return
+
+    for item in trends:
+        caption = (
+            f"<b>{item['title']}</b>\n"
+            f"💰 {item['price']}\n"
+            f"🏢 Продавец: {item['company']}\n"
+            f"<a href='{item['product_link']}'>🔗 Перейти к товару</a>"
+        )
+        await bot.send_photo(
+            chat_id=callback.message.chat.id,
+            photo=item['image_url'],
+            caption=caption,
+            parse_mode='HTML'
+        )
 
 @dp.message(lambda msg: msg.text == "1688")
-@premium_required
-async def trends_1688(message: Message):
-    await message.answer("📦 Находим оптовые хиты с 1688 — для самых выгодных закупок! 💼")
-    trends = await get_1688_trends()
-    if not trends:
-        return await message.answer("😓 Что-то пошло не так... Не удалось загрузить тренды. Попробуйте позже — мы уже чиним! 🔧")
-    for item in trends:
-        caption = f"📈 <b>{item['title']}</b>\n💰 Цена: {item['price']}\n🏢 Продавец: {item['company']}\n<a href='{item['product_link']}'>📦 Открыть на сайте</a>"
-        await bot.send_photo(message.chat.id, item['image_url'], caption=caption, parse_mode='HTML')
+async def choose_1688_category(message: types.Message):
+    await message.answer("📦 Загружаю категории 1688...")
+    category_dict = await get_1688_categories()
 
+
+    if not category_dict:
+        return await message.answer("❌ Не удалось получить список категорий.")
+
+    keyboard = InlineKeyboardBuilder()
+    for original, translated in category_dict.items():
+        keyboard.button(text=translated, callback_data=f"cat1688:{original}")
+    keyboard.adjust(2)
+
+    await message.answer("🧭 Выбери категорию:", reply_markup=keyboard.as_markup())
+
+    
 
 @dp.message(lambda msg: msg.text == "Pinterest")
-@premium_required
-async def trends_pinterest(message: Message):
-    await message.answer("📌 Ловим вдохновение на Pinterest — самые креативные тренды здесь! 💡")
-    trends = get_pinterest_trends()
+async def trends_pinterest(message: types.Message):
+    await message.answer("🔥 Ищу тренды на Pinterest...")
+    trends = await get_pinterest_trends()
+
     if not trends:
-        return await message.answer("❌ Не удалось получить тренды.")
+        await message.answer("❌ Не удалось получить тренды с Pinterest.")
+        return
+
     for item in trends:
-        caption = f"💡 <b>{item['title']}</b>\n<a href='{item['product_link']}'>🛒 Посмотреть идею</a>"
-        await bot.send_photo(message.chat.id, item['image_url'], caption=caption, parse_mode='HTML')
-
-
+        caption = f"<b>{item['title']}</b>\n<a href='{item['pin_link']}'>🔗 Посмотреть на Pinterest</a>"
+        await bot.send_photo(
+            chat_id=message.chat.id,
+            photo=item['image_url'],
+            caption=caption,
+            parse_mode='HTML'
+        )
 # ========== ЗАПУСК ==========
 async def main():
     init_db()
@@ -252,3 +299,8 @@ async def main():
 
 if __name__ == "__main__":
     asyncio.run(main())
+
+
+
+
+#условие на товары 

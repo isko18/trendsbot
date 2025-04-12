@@ -5,7 +5,8 @@ from config import BOT_TOKEN
 from trends.amazon import get_amazon_trends
 from trends.shein import get_shein_trends
 from trends.trend1688 import get_1688_trends
-# from trends.pinterest import get_pinterest_trends
+from trends.pinterest import get_pinterest_trends
+
 
 bot = Bot(token=BOT_TOKEN)
 dp = Dispatcher()
@@ -91,23 +92,23 @@ async def trends_1688(message: types.Message):
             parse_mode='HTML'
         )
 
-# @dp.message(lambda msg: msg.text == "Pinterest")
-# async def trends_pinterest(message: types.Message):
-#     await message.answer("🔥 Ищу тренды на Pinterest...")
-#     # trends = get_pinterest_trends()
+@dp.message(lambda msg: msg.text == "Pinterest")
+async def trends_pinterest(message: types.Message):
+    await message.answer("🔥 Ищу тренды на Pinterest...")
+    trends = await get_pinterest_trends()
 
-#     if not trends:
-#         await message.answer("❌ Не удалось получить тренды с Pinterest.")
-#         return
+    if not trends:
+        await message.answer("❌ Не удалось получить тренды с Pinterest.")
+        return
 
-#     for item in trends:
-#         caption = f"<b>{item['title']}</b>\n<a href='{item['link']}'>🔗 Посмотреть на Pinterest</a>"
-#         await bot.send_photo(
-#             chat_id=message.chat.id,
-#             photo=item['image_url'],
-#             caption=caption,
-#             parse_mode='HTML'
-#         )
+    for item in trends:
+        caption = f"<b>{item['title']}</b>\n<a href='{item['pin_link']}'>🔗 Посмотреть на Pinterest</a>"
+        await bot.send_photo(
+            chat_id=message.chat.id,
+            photo=item['image_url'],
+            caption=caption,
+            parse_mode='HTML'
+        )
 
 
 async def main():
