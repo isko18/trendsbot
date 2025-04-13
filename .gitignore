@@ -1,2 +1,5 @@
 __pycache__/
 venv/
+denushki.db
+promos.db
+seen_products.db
