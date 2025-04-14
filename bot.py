@@ -119,6 +119,34 @@ def save_user_subscription(user_id: int, username: str, days: int):
         """, (user_id, username, end_date.strftime("%Y-%m-%d %H:%M:%S")))
         print(f"[OK] Подписка для {user_id} до {end_date}")  # ← лог
 
+async def remind_expiring_subscriptions():
+    while True:
+        now = datetime.now()
+        tomorrow = (now + timedelta(days=1)).strftime("%Y-%m-%d")
+
+        with sqlite3.connect(DB_NAME) as conn:
+            cursor = conn.cursor()
+            rows = cursor.execute("""
+                SELECT user_id, username, end_date FROM subscriptions
+            """).fetchall()
+
+            for user_id, username, end_date in rows:
+                try:
+                    end_dt = datetime.strptime(end_date, "%Y-%m-%d %H:%M:%S")
+                    if end_dt.date() == (now + timedelta(days=1)).date():
+                        kb = InlineKeyboardBuilder()
+                        kb.button(text="💳 Продлить подписку", callback_data="open_buy_menu")
+                        await bot.send_message(
+                            user_id,
+                            f"⏳ Подписка заканчивается <b>завтра ({end_dt.strftime('%Y-%m-%d')})</b>.\n"
+                            "Продлите сейчас, чтобы не потерять доступ к трендам 👇",
+                            parse_mode="HTML",
+                            reply_markup=kb.as_markup()
+                        )
+                except Exception as e:
+                    print(f"[ERROR] Напоминание для {user_id} — {e}")
+
+        await asyncio.sleep(3600 * 12)  # проверка каждые 12 часов
 
 def get_user_subscription_end(user_id: int):
     with sqlite3.connect(DB_NAME) as conn:
@@ -381,7 +409,9 @@ async def main():
     init_db()
     init_seen_products_db()
     init_promo_db()
-    await bot.set_my_commands([BotCommand(command="/start", description="Запустить бота")])
+    await bot.set_my_commands([BotCommand(command="/start", description="Запустить бота"),
+                               BotCommand(command="/status", description="Проверка подписки")])
+    asyncio.create_task(remind_expiring_subscriptions())
     await dp.start_polling(bot)
 
 if __name__ == "__main__":
