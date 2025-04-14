@@ -297,8 +297,8 @@ async def start(message: Message):
     if is_premium_active(message.from_user.id):
         text = "🎉 Подписка активна! Выбери маркетплейс:"
         kb = ReplyKeyboardMarkup(keyboard=[
-            [KeyboardButton(text="Amazon"), KeyboardButton(text="Shein")],
-            [KeyboardButton(text="1688"), KeyboardButton(text="Pinterest")]
+            [KeyboardButton(text="🛒 Amazon"), KeyboardButton(text="👗 Shein")],
+            [KeyboardButton(text="📦 1688"), KeyboardButton(text="📌 Pinterest")]
         ], resize_keyboard=True)
     else:
         text = "👋 Я бот с трендами Amazon, Shein, 1688 и Pinterest."
