@@ -15,31 +15,31 @@ async def get_pinterest_trends():
                          else route.continue_())
 
         await page.goto(url, wait_until="domcontentloaded", timeout=30000)
-        await page.wait_for_timeout(5000)  # дать странице подгрузиться
+        await page.wait_for_timeout(8000)  # дать больше времени на подгрузку
         html = await page.content()
         await browser.close()
 
     soup = BeautifulSoup(html, "html.parser")
-    pin_items = soup.select("div[data-test-id='pin']")  # ищем пины
 
-    pins = random.sample(pin_items, k=min(5, len(pin_items)))
+    # Новый селектор: ищем изображения внутри пинов с ссылкой
+    pin_imgs = soup.select("a[href*='/pin/'] img")
+    print(f"🔍 Найдено пинов: {len(pin_imgs)}")
+
+    # Выбираем максимум 5 случайных
+    selected = random.sample(pin_imgs, k=min(5, len(pin_imgs)))
     results = []
 
-    for pin in pins:
+    for img_tag in selected:
         try:
-            link_tag = pin.find("a", href=True)
-            if not link_tag:
-                continue
-            pin_link = "https://www.pinterest.com" + link_tag["href"]
-            title = link_tag.get("aria-label") or "Без названия"
-            image_tag = pin.find("img")
-            image_url = image_tag["src"] if image_tag else "Изображение не найдено"
-            description = image_tag.get("alt", "Описание не указано") if image_tag else "Описание не указано"
+            image_url = img_tag.get("src")
+            description = img_tag.get("alt", "Описание не указано")
+            link_tag = img_tag.find_parent("a")
+            pin_link = "https://www.pinterest.com" + link_tag["href"] if link_tag and link_tag.get("href") else "#"
 
             results.append({
-                "title": title,
+                "title": description[:50] or "Без названия",
                 "image_url": image_url,
-                "pin_link": pin_link,
+                "product_link": pin_link,
                 "description": description
             })
         except Exception as e:

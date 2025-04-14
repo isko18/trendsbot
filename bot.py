@@ -19,10 +19,15 @@ from trends.amazon import get_amazon_trends
 from trends.shein import get_shein_trends
 from trends.trend1688 import get_1688_categories, get_1688_trends_by_category
 from trends.pinterest import get_pinterest_trends
+from trends.wordstat import get_wordstat_count
 
 # === FSM ===
 class PromoInput(StatesGroup):
     waiting_for_code = State()
+
+class WordstatFSM(StatesGroup):
+    waiting_for_phrase = State()
+
 
 # === Инициализация ===
 bot = Bot(token=BOT_TOKEN)
@@ -35,6 +40,38 @@ PROMO_DB = "promos.db"
 ADMIN_ID = 5268023094
 
 # === БД ===
+
+# wordstat_limit.py
+import sqlite3
+from datetime import datetime
+
+def init_wordstat_limit_db():
+    with sqlite3.connect("wordstat_limit.db") as conn:
+        conn.execute("""
+        CREATE TABLE IF NOT EXISTS requests (
+            user_id INTEGER,
+            date TEXT,
+            count INTEGER,
+            PRIMARY KEY (user_id, date)
+        )
+        """)
+
+def check_wordstat_limit(user_id: int) -> bool:
+    today = datetime.now().strftime("%Y-%m-%d")
+    with sqlite3.connect("wordstat_limit.db") as conn:
+        cur = conn.cursor()
+        row = cur.execute("SELECT count FROM requests WHERE user_id = ? AND date = ?", (user_id, today)).fetchone()
+
+        if row and row[0] >= 5:
+            return False
+        elif row:
+            cur.execute("UPDATE requests SET count = count + 1 WHERE user_id = ? AND date = ?", (user_id, today))
+        else:
+            cur.execute("INSERT INTO requests (user_id, date, count) VALUES (?, ?, 1)", (user_id, today))
+
+        conn.commit()
+        return True
+
 def init_db():
     with sqlite3.connect(DB_NAME) as conn:
         conn.execute("""
@@ -200,10 +237,14 @@ async def handle_promo_input(message: Message, state: FSMContext):
         conn.commit()
 
         # 👌 Показываем сообщение + клавиатуру
-        kb = ReplyKeyboardMarkup(keyboard=[
-            [KeyboardButton(text="🛒 Amazon"), KeyboardButton(text="👗 Shein")],
-            [KeyboardButton(text="📦 1688"), KeyboardButton(text="📌 Pinterest")]
-        ], resize_keyboard=True)
+        kb = ReplyKeyboardMarkup(
+            keyboard=[
+                [KeyboardButton(text="🛒 Amazon"), KeyboardButton(text="👗 Shein")],
+                [KeyboardButton(text="📦 1688"), KeyboardButton(text="📌 Pinterest")],
+                [KeyboardButton(text="🔍 Wordstat")]
+            ],
+            resize_keyboard=True
+        )
 
         await message.answer(
             "🎁 <b>Промокод активирован!</b>\n"
@@ -298,7 +339,8 @@ async def start(message: Message):
         text = "🎉 Подписка активна! Выбери маркетплейс:"
         kb = ReplyKeyboardMarkup(keyboard=[
             [KeyboardButton(text="🛒 Amazon"), KeyboardButton(text="👗 Shein")],
-            [KeyboardButton(text="📦 1688"), KeyboardButton(text="📌 Pinterest")]
+            [KeyboardButton(text="📦 1688"), KeyboardButton(text="📌 Pinterest")],
+            [KeyboardButton(text="🔍 Wordstat")]
         ], resize_keyboard=True)
     else:
         text = "👋 Я бот с трендами Amazon, Shein, 1688 и Pinterest."
@@ -382,6 +424,7 @@ async def shein_handler(msg: Message):
 async def pinterest_handler(msg: Message):
     if not check_promo_click_limit(msg.from_user.id, "Pinterest"):
         return await msg.answer("⚠️ Сегодня ты уже дважды смотрел тренды Pinterest. Попробуй завтра.")
+    await msg.answer("🚀 Анализируем трендовые товары, ожидайте!")
     await send_trends(msg.from_user.id, await get_pinterest_trends(), msg.chat.id)
 
 @dp.message(lambda msg: msg.text == "📦 1688")
@@ -404,15 +447,51 @@ async def category_1688(call: CallbackQuery):
     trends = await get_1688_trends_by_category(category_key)
     await send_trends(call.from_user.id, trends, call.message.chat.id)
 
+@dp.message(lambda msg: msg.text == "🔍 Wordstat")
+async def wordstat_start(msg: Message, state: FSMContext):
+    await msg.answer("✏️ Введите ключевую фразу:")
+    await state.set_state(WordstatFSM.waiting_for_phrase)
+
+@dp.message(WordstatFSM.waiting_for_phrase)
+async def wordstat_handler(msg: Message, state: FSMContext):
+    if not check_wordstat_limit(msg.from_user.id):
+        await msg.answer("⚠️ Ты исчерпал лимит запросов на сегодня (5). Попробуй завтра.")
+        await state.clear()
+        return
+
+    await msg.answer("⏳ Получаю данные из Wordstat...")
+    try:
+        result = await get_wordstat_count(msg.text.strip())  # ← вот здесь await
+        await msg.answer(result, parse_mode="HTML")
+    except Exception as e:
+        await msg.answer("❌ Не удалось получить данные. Попробуй позже.")
+        print(f"[ERROR] Wordstat: {e}")
+
+    await state.clear()
+
 # === Запуск ===
 async def main():
+    # Инициализация баз данных
     init_db()
     init_seen_products_db()
     init_promo_db()
-    await bot.set_my_commands([BotCommand(command="/start", description="Запустить бота"),
-                               BotCommand(command="/status", description="Проверка подписки")])
+    init_wordstat_limit_db()
+
+    # Установка команд бота
+    await bot.set_my_commands([
+        BotCommand(command="/start", description="Запустить бота"),
+        BotCommand(command="/status", description="Проверка подписки")
+    ])
+
+    # Запуск фоновой задачи напоминания
     asyncio.create_task(remind_expiring_subscriptions())
+
+    # Запуск polling
     await dp.start_polling(bot)
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    try:
+        asyncio.run(main())
+    except (KeyboardInterrupt, SystemExit):
+        print("🚫 Бот остановлен")
+
