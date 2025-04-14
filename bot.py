@@ -406,13 +406,25 @@ async def category_1688(call: CallbackQuery):
 
 # === Запуск ===
 async def main():
+    # Инициализация баз данных
     init_db()
     init_seen_products_db()
     init_promo_db()
-    await bot.set_my_commands([BotCommand(command="/start", description="Запустить бота"),
-                               BotCommand(command="/status", description="Проверка подписки")])
+
+    # Установка команд бота
+    await bot.set_my_commands([
+        BotCommand(command="/start", description="Запустить бота"),
+        BotCommand(command="/status", description="Проверка подписки")
+    ])
+
+    # Запуск фоновой задачи напоминания
     asyncio.create_task(remind_expiring_subscriptions())
+
+    # Запуск polling
     await dp.start_polling(bot)
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    try:
+        asyncio.run(main())
+    except (KeyboardInterrupt, SystemExit):
+        print("🚫 Бот остановлен")
