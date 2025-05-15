@@ -1,69 +1,55 @@
-import requests
-from bs4 import BeautifulSoup
-import logging
+from playwright.async_api import async_playwright
 import random
-import time
 
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+async def get_amazon_trends():
+    trends = []
 
-def get_amazon_trends():
-    url = "https://www.amazon.com/Best-Sellers/zgbs"
-    headers = {
-        "User-Agent": (
+    async with async_playwright() as p:
+        browser = await p.chromium.launch(headless=True)
+        context = await browser.new_context(user_agent=(
             "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
             "AppleWebKit/537.36 (KHTML, like Gecko) "
             "Chrome/120.0.0.0 Safari/537.36"
-        ),
-        "Accept-Language": "en-US,en;q=0.9"
-    }
+        ))
 
-    logging.info(f"Отправка запроса на {url}")
-    try:
-        response = requests.get(url, headers=headers, timeout=15)
-    except Exception as e:
-        logging.error(f"Ошибка при запросе: {e}")
-        return []
+        page = await context.new_page()
+        await page.goto("https://www.amazon.com/Best-Sellers/zgbs", timeout=60000)
+        await page.wait_for_selector(".zg-grid-general-faceout, .zg-carousel-general-faceout", timeout=15000)
 
-    if response.status_code != 200:
-        logging.error(f"Ошибка получения данных с Amazon: статус-код {response.status_code}")
-        return []
+        items = await page.query_selector_all(".zg-grid-general-faceout, .zg-carousel-general-faceout")
 
-    if "To discuss automated access" in response.text or "captcha" in response.text.lower():
-        logging.error("❌ Amazon заблокировал доступ — капча или антибот защита.")
-        return []
+        if not items:
+            print("❌ Не удалось найти товары.")
+            await browser.close()
+            return []
 
-    soup = BeautifulSoup(response.text, "html.parser")
-    all_items = soup.select(".zg-carousel-general-faceout")
+        sampled_items = random.sample(items, k=min(5, len(items)))
 
-    if not all_items:
-        logging.error("❌ Товары не найдены на странице Amazon.")
-        return []
+        for item in sampled_items:
+            try:
+                title_elem = await item.query_selector("img") or await item.query_selector("a")
+                title_text = await title_elem.get_attribute("alt") if title_elem else "Без названия"
 
-    items = random.sample(all_items, k=min(5, len(all_items)))
-    trends = []
+                image = await item.query_selector("img")
+                image_url = await image.get_attribute("src") if image else "https://via.placeholder.com/150"
 
-    for item in items:
-        try:
-            title_elem = item.select_one(".p13n-sc-truncate-desktop-type2") or item.select_one(".zg-text-center-align .a-link-normal")
-            image_elem = item.select_one("img")  # иногда просто img
-            link_elem = item.select_one("a.a-link-normal")
-            price_elem = item.select_one(".p13n-sc-price")
+                link = await item.query_selector("a")
+                href = await link.get_attribute("href") if link else "#"
+                product_link = f"https://www.amazon.com{href}" if href and href.startswith("/") else href or "#"
 
-            title = title_elem.get_text(strip=True) if title_elem else "Без названия"
-            image_url = image_elem["src"] if image_elem and image_elem.get("src") else "https://via.placeholder.com/150"
-            product_link = f"https://www.amazon.com{link_elem['href']}" if link_elem and link_elem.get("href") else "#"
-            price = price_elem.get_text(strip=True) if price_elem else "Цена не указана"
+                price_elem = await item.query_selector(".p13n-sc-price")
+                price = await price_elem.inner_text() if price_elem else "Цена не указана"
 
-            trends.append({
-                'title': title,
-                'image_url': image_url,
-                'product_link': product_link,
-                'price': price
-            })
+                trends.append({
+                    'title': title_text,
+                    'image_url': image_url,
+                    'product_link': product_link,
+                    'price': price
+                })
 
-            logging.info(f"Найден товар: {title}")
-        except Exception as e:
-            logging.warning(f"⚠️ Пропущен товар из-за ошибки: {e}")
-            continue
+            except Exception as e:
+                print(f"⚠️ Ошибка при обработке товара: {e}")
+                continue
 
+        await browser.close()
     return trends

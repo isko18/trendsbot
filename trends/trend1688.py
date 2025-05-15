@@ -28,69 +28,54 @@ async def get_1688_categories() -> dict[str, str]:
 
 
 async def get_1688_trends_by_category(category_name: str):
-    translator = GoogleTranslator(source='auto', target='ru')
+    translator = GoogleTranslator(source='zh-CN', target='ru')
 
-    async with async_playwright() as p:
-        browser = await p.chromium.launch(headless=True)
-        page = await browser.new_page()
+    try:
+        async with async_playwright() as p:
+            browser = await p.chromium.launch(headless=True)
+            page = await browser.new_page()
+            await page.goto(BASE_URL, wait_until="domcontentloaded", timeout=20000)
 
-        try:
-            await page.goto(BASE_URL, wait_until="domcontentloaded", timeout=30000)
-            await page.wait_for_selector(".pc-venue-recommend--categoryItem--1-S7oI6", timeout=10000)
+            # Клик по категории
+            category_button = page.locator(".pc-venue-recommend--categoryItem--1-S7oI6", has_text=category_name.strip())
+            await category_button.click(timeout=5000)
 
-            # Клик по нужной категории
-            await page.locator(".pc-venue-recommend--categoryItem--1-S7oI6", has_text=category_name.strip()).click()
-            await page.wait_for_timeout(2000)
-
-            # Скроллим к нужному блоку
-            await page.locator('[id="381063652735401"]').scroll_into_view_if_needed()
+            # Подскроллим и подождём
             await page.mouse.wheel(0, 1500)
-            await page.wait_for_timeout(2000)
+            await page.wait_for_selector('#\\33 81063652735401 .pc-venue-recommend--cardItem--2GZieDa', timeout=10000)
 
-            # Ждём появления карточек
-            await page.wait_for_selector('#\\33 81063652735401 .pc-venue-recommend--productList--1zf8r21 > .pc-venue-recommend--cardItem--2GZieDa', timeout=10000)
-
-            # Получаем HTML блока
+            # Получаем HTML
             html = await page.eval_on_selector('[id="381063652735401"]', "el => el.outerHTML")
-
-        except Exception as e:
-            print("❌ Ошибка при загрузке трендов:", e)
             await browser.close()
-            return []
+    except Exception as e:
+        print(f"❌ Ошибка при загрузке трендов: {e}")
+        return []
 
-        await browser.close()
-
+    # Парсинг HTML
     soup = BeautifulSoup(html, "html.parser")
     cards = soup.select(".pc-venue-recommend--productList--1zf8r21 > .pc-venue-recommend--cardItem--2GZieDa")
 
     trends = []
-    for card in cards[:5]:
+    for card in cards[:5]:  # до 5 карточек
         try:
-            title_tag = card.select_one(".pc-venue-recommend--title--1SH-UhM")
-            image_tag = card.select_one("img.pc-venue-recommend--cardImg--Bbz2Eyk")
-            link_tag = card.select_one("a.pc-venue-recommend--cardBox--14KaPCf")
+            title = card.select_one(".pc-venue-recommend--title--1SH-UhM")
+            img = card.select_one("img.pc-venue-recommend--cardImg--Bbz2Eyk")
+            link = card.select_one("a.pc-venue-recommend--cardBox--14KaPCf")
             priceA = card.select_one(".pc-venue-recommend--priceNumA--1cFOcI5")
             priceB = card.select_one(".pc-venue-recommend--priceNumB--2DsAtei")
 
-            if not title_tag or not image_tag or not link_tag:
+            if not (title and img and link):
                 continue
 
-            raw_title = title_tag.get_text(strip=True)
-            translated_title = translator.translate(raw_title)
-
-            image_url = image_tag.get("data-src") or image_tag.get("src") or "https://via.placeholder.com/150"
-            product_link = link_tag.get("href", "#")
-            price = f"¥{priceA.text.strip()}.{priceB.text.strip()}" if priceA and priceB else "Цена не указана"
-
             trends.append({
-                "title": translated_title,
-                "image_url": image_url,
-                "product_link": product_link,
-                "price": price,
+                "title": translator.translate(title.get_text(strip=True)),
+                "image_url": img.get("data-src") or img.get("src") or "https://via.placeholder.com/150",
+                "product_link": link.get("href", "#"),
+                "price": f"¥{priceA.get_text(strip=True)}.{priceB.get_text(strip=True)}" if priceA and priceB else "Цена не указана",
                 "company": "1688"
             })
-
         except Exception as e:
-            print(f"❌ Ошибка при парсинге карточки: {e}")
+            print(f"⚠️ Пропущена карточка: {e}")
+            continue
 
     return trends
